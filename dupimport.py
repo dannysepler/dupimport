@@ -4,6 +4,9 @@ import warnings
 from pathlib import Path
 from typing import Optional, Sequence, Set, Tuple, Union
 
+BOLD = '\033[1m'
+END = '\033[0m'
+
 
 class ImportVisitor(ast.NodeVisitor):
     def __init__(self):
@@ -39,23 +42,27 @@ def find_dup_imports(contents: str) -> Set[str]:
     return visitor.dups
 
 
-def _check_path(filepath: Union[str, Path]) -> int:
+def _check_path(filepath: Union[str, Path], ignore_syntax_err: bool) -> int:
     path = Path(filepath)
     if not path.exists():
         ValueError(f"Path: '{filepath}' does not exist")
     if path.is_dir():
-        return sum(_check_path(f) for f in path.glob('**/*.py'))
+        return sum(
+            _check_path(f, ignore_syntax_err) for f in path.glob('**/*.py')
+        )
 
     try:
         contents = path.read_text()
         dups = find_dup_imports(contents)
     except SyntaxError:
-        print(f'Skipping file {path} because of syntax errors')
+        if not ignore_syntax_err:
+            print(f'Skipping file {path} because of syntax errors')
         return 0
 
     if dups:
         print(
-            f"Duplicated import(s) {', '.join(sorted(dups))} found in {path}",
+            f"Duplicated import(s) {BOLD}{', '.join(sorted(dups))}{END} "
+            'found in {path}',
         )
         return 1
     else:
@@ -65,11 +72,12 @@ def _check_path(filepath: Union[str, Path]) -> int:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('filepaths', nargs='*')
+    parser.add_argument('--ignore-syntax-err', action='store_true')
     args = parser.parse_args(argv)
 
     ret = 0
     for filepath in args.filepaths:
-        ret += _check_path(filepath)
+        ret += _check_path(filepath, args.ignore_syntax_err)
     return ret
 
 
